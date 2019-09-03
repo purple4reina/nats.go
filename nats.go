@@ -17,6 +17,7 @@ package nats
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -430,7 +431,7 @@ type Subscription struct {
 	delivered  uint64
 	max        uint64
 	conn       *Conn
-	mcb        MsgHandler
+	mcb        MsgHandlerWithContext
 	mch        chan *Msg
 	closed     bool
 	sc         bool
@@ -533,6 +534,10 @@ type connectInfo struct {
 // MsgHandler is a callback function that processes messages delivered to
 // asynchronous subscribers.
 type MsgHandler func(msg *Msg)
+
+func (cb MsgHandler) withContext(ctx context.Context, msg *Msg) { cb(msg) }
+
+type MsgHandlerWithContext func(ctx context.Context, msg *Msg)
 
 // Connect will attempt to connect to the NATS system.
 // The url can contain username/password semantics. e.g. nats://derek:pass@localhost:4222
@@ -2128,7 +2133,7 @@ func (nc *Conn) waitForMsgs(s *Subscription) {
 
 		// Deliver the message.
 		if m != nil && (max == 0 || delivered <= max) {
-			mcb(m)
+			mcb(context.Background(), m)
 		}
 		// If we have hit the max for delivered msgs, remove sub.
 		if max > 0 && delivered >= max {
@@ -2823,6 +2828,13 @@ func respToken(respInbox string) string {
 // can have wildcards (partial:*, full:>). Messages will be delivered
 // to the associated MsgHandler.
 func (nc *Conn) Subscribe(subj string, cb MsgHandler) (*Subscription, error) {
+	return nc.SubscribeWithContext(subj, cb.withContext)
+}
+
+// SubscribeWithContext will express interest in the given subject. The subject
+// can have wildcards (partial:*, full:>). Messages will be delivered to the
+// associated MsgHandlerWithContext.
+func (nc *Conn) SubscribeWithContext(subj string, cb MsgHandlerWithContext) (*Subscription, error) {
 	return nc.subscribe(subj, _EMPTY_, cb, nil, false)
 }
 
@@ -2859,6 +2871,14 @@ func (nc *Conn) SubscribeSync(subj string) (*Subscription, error) {
 // only one member of the group will be selected to receive any given
 // message asynchronously.
 func (nc *Conn) QueueSubscribe(subj, queue string, cb MsgHandler) (*Subscription, error) {
+	return nc.QueueSubscribeWithContext(subj, queue, cb.withContext)
+}
+
+// QueueSubscribeWithContext creates an asynchronous queue subscriber on the
+// given subject.  All subscribers with the same queue name will form the queue
+// group and only one member of the group will be selected to receive any given
+// message asynchronously.
+func (nc *Conn) QueueSubscribeWithContext(subj, queue string, cb MsgHandlerWithContext) (*Subscription, error) {
 	return nc.subscribe(subj, queue, cb, nil, false)
 }
 
@@ -2903,7 +2923,7 @@ func badQueue(qname string) bool {
 }
 
 // subscribe is the internal subscribe function that indicates interest in a subject.
-func (nc *Conn) subscribe(subj, queue string, cb MsgHandler, ch chan *Msg, isSync bool) (*Subscription, error) {
+func (nc *Conn) subscribe(subj, queue string, cb MsgHandlerWithContext, ch chan *Msg, isSync bool) (*Subscription, error) {
 	if nc == nil {
 		return nil, ErrInvalidConnection
 	}

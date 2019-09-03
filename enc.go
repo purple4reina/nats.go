@@ -14,6 +14,7 @@
 package nats
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -194,7 +195,7 @@ func (c *EncodedConn) subscribe(subject, queue string, cb Handler) (*Subscriptio
 	cbValue := reflect.ValueOf(cb)
 	wantsRaw := (argType == emptyMsgType)
 
-	natsCB := func(m *Msg) {
+	natsCB := func(ctx context.Context, m *Msg) {
 		var oV []reflect.Value
 		if wantsRaw {
 			oV = []reflect.Value{reflect.ValueOf(m)}

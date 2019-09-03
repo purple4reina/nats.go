@@ -14,6 +14,7 @@
 package nats
 
 import (
+	"context"
 	"errors"
 	"reflect"
 )
@@ -78,7 +79,7 @@ func (c *EncodedConn) bindRecvChan(subject, queue string, channel interface{}) (
 	}
 	argType := chVal.Type().Elem()
 
-	cb := func(m *Msg) {
+	cb := func(ctx context.Context, m *Msg) {
 		var oPtr reflect.Value
 		if argType.Kind() != reflect.Ptr {
 			oPtr = reflect.New(argType)
